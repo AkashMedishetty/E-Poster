@@ -1,103 +1,295 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { abstracts as hardcodedAbstracts } from '@/data/abstracts';
+import AbstractCard from '@/components/AbstractCard';
+import SearchBar from '@/components/SearchBar';
+import ThemeToggle from '@/components/ThemeToggle';
+import { usePresentationSync } from '@/hooks/usePresentationSync';
+import { useLocalFiles } from '@/contexts/LocalFilesContext';
+import { Abstract } from '@/types/abstract';
+import { FileSystemManager } from '@/utils/fileSystemManager';
+import { getAllInteractions } from '@/utils/interactionStore';
+import { exportAsJson, exportAsCsv, triggerDownload } from '@/utils/dataExporter';
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const [isBrowserSupported, setIsBrowserSupported] = useState(true);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const localFiles = useLocalFiles();
+
+  // Determine which abstract list to use
+  const activeAbstracts = localFiles.isLoaded ? localFiles.abstracts : hardcodedAbstracts;
+
+  // Polling-based sync for laptop
+  const { isConnected, presentAbstract } = usePresentationSync({
+    clientType: 'laptop',
+    pollingInterval: 3000,
+  });
+
+  // Debounce search query
+  useEffect(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [searchQuery]);
+
+  // Check browser compatibility on page load
+  useEffect(() => {
+    setIsBrowserSupported(FileSystemManager.isSupported());
+  }, []);
+
+  // Function to auto-send abstract to big screen
+  const handleAbstractClick = useCallback(async (abstract: Abstract) => {
+    if (isConnected) {
+      // For local files, we need to read the file and send as base64
+      if (abstract.source === 'local' && abstract.localFileName) {
+        try {
+          // Get the file URL from the context
+          const fileUrl = await localFiles.getFileUrl(abstract.localFileName);
+          // Fetch the blob and convert to base64
+          const response = await fetch(fileUrl);
+          const blob = await response.blob();
+          const reader = new FileReader();
+          reader.onload = async () => {
+            const base64 = reader.result as string;
+            await presentAbstract({
+              id: abstract.id,
+              title: abstract.title,
+              author: abstract.author,
+              description: abstract.description,
+              thumbnail: abstract.thumbnail,
+              fileUrl: abstract.fileUrl,
+              fileType: abstract.fileType,
+              localFileName: abstract.localFileName,
+              isLocalFile: true,
+              localFileData: base64,
+            });
+            console.log('Sent local file to big screen:', abstract.title);
+            // Revoke the temporary URL
+            localFiles.revokeFileUrl(fileUrl);
+          };
+          reader.readAsDataURL(blob);
+          return;
+        } catch (error) {
+          console.error('Error reading local file:', error);
+        }
+      }
+
+      // For non-local files or if local file reading fails
+      await presentAbstract({
+        id: abstract.id,
+        title: abstract.title,
+        author: abstract.author,
+        description: abstract.description,
+        thumbnail: abstract.thumbnail,
+        fileUrl: abstract.fileUrl,
+        fileType: abstract.fileType,
+        localFileName: abstract.localFileName,
+        isLocalFile: abstract.source === 'local',
+      });
+      console.log('Sent abstract to big screen:', abstract.title);
+    } else {
+      console.warn('Not connected to server, cannot send to big screen');
+    }
+  }, [isConnected, presentAbstract, localFiles]);
+
+  const handleExport = (format: 'csv' | 'json') => {
+    const interactions = getAllInteractions();
+    if (format === 'json') {
+      const content = exportAsJson(interactions);
+      triggerDownload(content, 'interactions.json', 'application/json');
+    } else {
+      const content = exportAsCsv(interactions);
+      triggerDownload(content, 'interactions.csv', 'text/csv');
+    }
+    setShowExportMenu(false);
+  };
+
+  const filteredAbstracts = useMemo(() => {
+    if (!debouncedQuery.trim()) {
+      return activeAbstracts;
+    }
+
+    const query = debouncedQuery.toLowerCase();
+    return activeAbstracts.filter(abstract =>
+      abstract.title.toLowerCase().includes(query) ||
+      abstract.author.toLowerCase().includes(query) ||
+      abstract.description.toLowerCase().includes(query) ||
+      (abstract.abstractId && abstract.abstractId.toLowerCase().includes(query)) ||
+      (abstract.regId && abstract.regId.toLowerCase().includes(query))
+    );
+  }, [debouncedQuery, activeAbstracts]);
+
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Header */}
+      <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-md">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white">E-Poster Abstracts</h1>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Browse and view research posters</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {/* Connection status pill */}
+              {isConnected ? (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-3 py-1.5 rounded-full">
+                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                  Big Screen Connected
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-3 py-1.5 rounded-full">
+                  <span className="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
+                  Connecting...
+                </span>
+              )}
+              <ThemeToggle />
+            </div>
+          </div>
+
+          {/* Action bar */}
+          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={localFiles.loadDirectory}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={!isBrowserSupported}
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                Load Folder
+              </button>
+              <button
+                onClick={localFiles.loadSpreadsheet}
+                className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Load Spreadsheet
+              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setShowExportMenu(!showExportMenu)}
+                  className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                  Export
+                </button>
+                {showExportMenu && (
+                  <div className="absolute top-full mt-1 left-0 bg-white dark:bg-gray-700 rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 z-10 min-w-[120px] overflow-hidden">
+                    <button
+                      onClick={() => handleExport('csv')}
+                      className="flex items-center gap-2 w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600"
+                    >
+                      📄 CSV
+                    </button>
+                    <button
+                      onClick={() => handleExport('json')}
+                      className="flex items-center gap-2 w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600"
+                    >
+                      📋 JSON
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {localFiles.isLoaded && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-3 py-1.5 rounded-full">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  {localFiles.abstracts.length} posters loaded
+                </span>
+              )}
+              {!isBrowserSupported && (
+                <span className="text-xs text-amber-600 dark:text-amber-400">
+                  Folder loading requires Chrome/Edge
+                </span>
+              )}
+            </div>
+          </div>
         </div>
+      </header>
+
+      {/* Search Bar */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <SearchBar onSearch={setSearchQuery} />
+      </div>
+
+      {/* Abstracts Grid */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+        {filteredAbstracts.length === 0 ? (
+          <div className="text-center py-16">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
+            <p className="text-gray-500 dark:text-gray-400 text-lg">
+              {searchQuery ? 'No abstracts found matching your search.' : 'No abstracts available.'}
+            </p>
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="mt-3 text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium"
+              >
+                Clear search
+              </button>
+            )}
+          </div>
+        ) : (
+          <>
+            <div className="mb-4 flex items-center justify-between">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {filteredAbstracts.length} of {activeAbstracts.length} abstracts
+                {searchQuery && <span className="ml-1">matching &ldquo;{searchQuery}&rdquo;</span>}
+              </p>
+              {isConnected && (
+                <p className="text-xs text-green-600 dark:text-green-400">
+                  Click any poster to send to big screen
+                </p>
+              )}
+            </div>
+            
+            <div className="space-y-3">
+              {filteredAbstracts.map((abstract) => (
+                <AbstractCard 
+                  key={abstract.id} 
+                  abstract={abstract} 
+                  onAutoSend={handleAbstractClick}
+                  isWebSocketConnected={isConnected}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
     </div>
   );
 }

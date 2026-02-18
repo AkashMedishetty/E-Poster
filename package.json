@@ -15,7 +15,7 @@
   "dependencies": {
     "@types/ws": "^8.18.1",
     "jszip": "^3.10.1",
-    "next": "15.5.2",
+    "next": "15.5.3",
     "pdfjs-dist": "^5.4.624",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -34,7 +34,7 @@
     "@types/react-dom": "^19",
     "concurrently": "^9.2.1",
     "eslint": "^9",
-    "eslint-config-next": "15.5.2",
+    "eslint-config-next": "15.5.3",
     "fast-check": "^4.5.3",
     "jsdom": "^28.1.0",
     "tailwindcss": "^4",

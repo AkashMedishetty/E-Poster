@@ -100,7 +100,7 @@ function BigScreenContent() {
     clientType: 'bigscreen',
     roomId,
     onPresentationChange: handlePresentationChange,
-    pollingInterval: 1000, // Poll every 1 second for responsive updates
+    pollingInterval: 500, // Poll every 500ms for fast updates
   });
 
   // Handle ESC key to close presentation

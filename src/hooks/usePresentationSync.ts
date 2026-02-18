@@ -116,9 +116,13 @@ export function usePresentationSync({
     if (!mountedRef.current) return;
 
     try {
-      const response = await fetch(`/api/presentation?version=${versionRef.current}&room=${roomId}`, {
+      // Add timestamp to prevent any caching
+      const response = await fetch(`/api/presentation?version=${versionRef.current}&room=${roomId}&t=${Date.now()}`, {
         method: 'GET',
         cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
       });
 
       if (!response.ok) {

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Redis } from '@upstash/redis';
 
+// Force dynamic rendering - no caching
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // Initialize Upstash Redis client
 const redis = new Redis({
   url: process.env.KV_REST_API_URL!,
@@ -46,6 +50,11 @@ export async function GET(request: NextRequest) {
         abstract: null,
         timestamp: Date.now(),
         version: 0,
+      }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache',
+        },
       });
     }
 
@@ -54,6 +63,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         changed: false,
         version: room.version,
+      }, {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache',
+        },
       });
     }
 
@@ -62,6 +76,11 @@ export async function GET(request: NextRequest) {
       abstract: room.abstract,
       timestamp: room.timestamp,
       version: room.version,
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+      },
     });
   } catch (error) {
     console.error('Redis GET error:', error);

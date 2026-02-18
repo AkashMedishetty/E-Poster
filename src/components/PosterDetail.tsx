@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -21,6 +21,14 @@ interface PosterDetailProps {
 }
 
 export default function PosterDetail({ abstract }: PosterDetailProps) {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div></div>}>
+      <PosterDetailContent abstract={abstract} />
+    </Suspense>
+  );
+}
+
+function PosterDetailContent({ abstract }: PosterDetailProps) {
   const searchParams = useSearchParams();
   const roomId = searchParams.get('room') || 'default';
   

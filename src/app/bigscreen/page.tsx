@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { usePresentationSync, SyncPresentationData } from '@/hooks/usePresentationSync';
 import FileRenderer from '@/components/FileRenderer';
@@ -21,6 +21,14 @@ interface PresentationData {
 }
 
 export default function BigScreenPage() {
+  return (
+    <Suspense fallback={<div className="fixed inset-0 bg-black flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white"></div></div>}>
+      <BigScreenContent />
+    </Suspense>
+  );
+}
+
+function BigScreenContent() {
   const searchParams = useSearchParams();
   const roomId = searchParams.get('room') || 'default';
   

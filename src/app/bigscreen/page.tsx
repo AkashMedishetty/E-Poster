@@ -39,7 +39,7 @@ function BigScreenContent() {
 
   // Handle presentation changes from polling
   const handlePresentationChange = useCallback((data: SyncPresentationData | null) => {
-    console.log('Big screen received presentation:', data);
+    console.log('[BigScreen] handlePresentationChange called with:', data?.title || 'null');
     
     if (data === null) {
       // Presentation closed

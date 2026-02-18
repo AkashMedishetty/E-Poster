@@ -143,8 +143,8 @@ export function usePresentationSync({
 
       // Only process if there's a change
       if (result.changed) {
+        console.log(`[${clientType}] UPDATE RECEIVED - Old version: ${versionRef.current}, New version: ${result.version}, Abstract: ${result.abstract?.title || 'null'}`);
         versionRef.current = result.version;
-        console.log(`[${clientType}] Received update, version:`, result.version);
         onPresentationChangeRef.current?.(result.abstract);
       }
     } catch (error) {

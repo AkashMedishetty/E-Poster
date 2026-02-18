@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { Redis } from '@upstash/redis';
 
-// In-memory store for presentation state per room
-// Each room is an independent laptop+bigscreen pair
-interface PresentationState {
-  abstract: PresentationData | null;
-  timestamp: number;
-  version: number;
-}
+// Initialize Upstash Redis client
+const redis = new Redis({
+  url: process.env.UPSTASH_REDIS_REST_URL!,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
+});
 
 interface PresentationData {
   id: string;
@@ -21,14 +20,15 @@ interface PresentationData {
   localFileData?: string;
 }
 
-// Room-based state storage (supports multiple independent laptop+bigscreen pairs)
-const rooms = new Map<string, PresentationState>();
+interface PresentationState {
+  abstract: PresentationData | null;
+  timestamp: number;
+  version: number;
+}
 
-function getRoom(roomId: string): PresentationState {
-  if (!rooms.has(roomId)) {
-    rooms.set(roomId, { abstract: null, timestamp: Date.now(), version: 0 });
-  }
-  return rooms.get(roomId)!;
+// Helper to get room key
+function getRoomKey(roomId: string): string {
+  return `presentation:${roomId}`;
 }
 
 // GET - Retrieve current presentation state
@@ -36,23 +36,40 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const roomId = searchParams.get('room') || 'default';
   const clientVersion = parseInt(searchParams.get('version') || '0', 10);
-  
-  const room = getRoom(roomId);
-  
-  // If client already has the latest version, return 304-like response
-  if (clientVersion === room.version) {
+
+  try {
+    const room = await redis.get<PresentationState>(getRoomKey(roomId));
+    
+    if (!room) {
+      return NextResponse.json({
+        changed: clientVersion === 0,
+        abstract: null,
+        timestamp: Date.now(),
+        version: 0,
+      });
+    }
+
+    // If client already has the latest version, return 304-like response
+    if (clientVersion === room.version) {
+      return NextResponse.json({
+        changed: false,
+        version: room.version,
+      });
+    }
+
     return NextResponse.json({
-      changed: false,
+      changed: true,
+      abstract: room.abstract,
+      timestamp: room.timestamp,
       version: room.version,
     });
+  } catch (error) {
+    console.error('Redis GET error:', error);
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch presentation state' },
+      { status: 500 }
+    );
   }
-  
-  return NextResponse.json({
-    changed: true,
-    abstract: room.abstract,
-    timestamp: room.timestamp,
-    version: room.version,
-  });
 }
 
 // POST - Update presentation state (from laptop)
@@ -60,38 +77,51 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { type, data, room: roomId = 'default' } = body;
-    
-    const room = getRoom(roomId);
-    
+    const roomKey = getRoomKey(roomId);
+
+    // Get current state or create new
+    const current = await redis.get<PresentationState>(roomKey);
+    const currentVersion = current?.version || 0;
+
     if (type === 'present_abstract') {
-      room.abstract = data;
-      room.timestamp = Date.now();
-      room.version++;
+      const newState: PresentationState = {
+        abstract: data,
+        timestamp: Date.now(),
+        version: currentVersion + 1,
+      };
       
+      // Store with 1 hour expiry (auto-cleanup inactive rooms)
+      await redis.set(roomKey, newState, { ex: 3600 });
+
       return NextResponse.json({
         success: true,
-        version: room.version,
+        version: newState.version,
         message: 'Presentation updated',
       });
     }
-    
+
     if (type === 'close_presentation') {
-      room.abstract = null;
-      room.timestamp = Date.now();
-      room.version++;
+      const newState: PresentationState = {
+        abstract: null,
+        timestamp: Date.now(),
+        version: currentVersion + 1,
+      };
       
+      await redis.set(roomKey, newState, { ex: 3600 });
+
       return NextResponse.json({
         success: true,
-        version: room.version,
+        version: newState.version,
         message: 'Presentation closed',
       });
     }
-    
+
     return NextResponse.json(
       { success: false, error: 'Invalid action type' },
       { status: 400 }
     );
-  } catch {
+  } catch (error) {
+    console.error('Redis POST error:', error);
     return NextResponse.json(
       { success: false, error: 'Invalid request body' },
       { status: 400 }

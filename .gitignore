@@ -36,6 +36,13 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local poster files (loaded at runtime)
+/public/files/
+/public/final-files/
+/public/final-images/
+/public/thumbnails/
+/public/*.zip
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { usePresentationSync, SyncPresentationData } from '@/hooks/usePresentationSync';
 import FileRenderer from '@/components/FileRenderer';
 import OrientationToggle, { useOrientation } from '@/components/OrientationToggle';
@@ -20,6 +21,9 @@ interface PresentationData {
 }
 
 export default function BigScreenPage() {
+  const searchParams = useSearchParams();
+  const roomId = searchParams.get('room') || 'default';
+  
   const [currentAbstract, setCurrentAbstract] = useState<PresentationData | null>(null);
   const [isLocalFile, setIsLocalFile] = useState(false);
   const [localFileUrl, setLocalFileUrl] = useState<string | null>(null);
@@ -86,6 +90,7 @@ export default function BigScreenPage() {
   // Polling-based sync for big screen
   const { isConnected, error, lastSync } = usePresentationSync({
     clientType: 'bigscreen',
+    roomId,
     onPresentationChange: handlePresentationChange,
     pollingInterval: 1000, // Poll every 1 second for responsive updates
   });
@@ -147,6 +152,7 @@ export default function BigScreenPage() {
           <h1 className="text-3xl font-bold mb-2">E-Poster Big Screen</h1>
           <p className="text-gray-300 text-lg">Ready to receive presentations</p>
           <p className="text-gray-400 text-sm mt-2">Click an abstract on your laptop to start</p>
+          <p className="text-blue-400 text-sm mt-2">Room: {roomId}</p>
           {lastSync && (
             <p className="text-gray-500 text-xs mt-4">
               Connected • Last sync: {new Date(lastSync).toLocaleTimeString()}

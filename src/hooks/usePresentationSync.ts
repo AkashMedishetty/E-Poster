@@ -15,6 +15,7 @@ export interface SyncPresentationData {
 
 interface UsePresentationSyncOptions {
   clientType: 'laptop' | 'bigscreen';
+  roomId?: string; // Room ID for multi-display support
   onPresentationChange?: (data: SyncPresentationData | null) => void;
   pollingInterval?: number; // in milliseconds
 }
@@ -27,6 +28,7 @@ interface SyncState {
 
 export function usePresentationSync({
   clientType,
+  roomId = 'default',
   onPresentationChange,
   pollingInterval = 1500, // Default 1.5 seconds for good balance
 }: UsePresentationSyncOptions) {
@@ -57,6 +59,7 @@ export function usePresentationSync({
         body: JSON.stringify({
           type: 'present_abstract',
           data,
+          room: roomId,
         }),
       });
 
@@ -72,7 +75,7 @@ export function usePresentationSync({
         setState(prev => ({ ...prev, isConnected: true, error: null }));
       }
       
-      console.log(`[${clientType}] Presentation sent:`, data.title);
+      console.log(`[${clientType}] Presentation sent:`, data.title, `(room: ${roomId})`);
       return true;
     } catch (error) {
       console.error(`[${clientType}] Failed to send presentation:`, error);
@@ -81,7 +84,7 @@ export function usePresentationSync({
       }
       return false;
     }
-  }, [clientType]);
+  }, [clientType, roomId]);
 
   // Close presentation (laptop only)
   const closePresentation = useCallback(async () => {
@@ -89,7 +92,7 @@ export function usePresentationSync({
       const response = await fetch('/api/presentation', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'close_presentation' }),
+        body: JSON.stringify({ type: 'close_presentation', room: roomId }),
       });
 
       if (!response.ok) {
@@ -106,14 +109,14 @@ export function usePresentationSync({
       console.error(`[${clientType}] Failed to close presentation:`, error);
       return false;
     }
-  }, [clientType]);
+  }, [clientType, roomId]);
 
   // Poll for updates (big screen only, but laptop can also use for status)
   const pollForUpdates = useCallback(async () => {
     if (!mountedRef.current) return;
 
     try {
-      const response = await fetch(`/api/presentation?version=${versionRef.current}`, {
+      const response = await fetch(`/api/presentation?version=${versionRef.current}&room=${roomId}`, {
         method: 'GET',
         cache: 'no-store',
       });
@@ -155,7 +158,7 @@ export function usePresentationSync({
         }
       }
     }
-  }, [clientType]);
+  }, [clientType, roomId]);
 
   // Start/stop polling based on client type
   useEffect(() => {

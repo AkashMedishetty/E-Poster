@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { abstracts as hardcodedAbstracts } from '@/data/abstracts';
 import AbstractCard from '@/components/AbstractCard';
 import SearchBar from '@/components/SearchBar';
@@ -12,7 +13,26 @@ import { FileSystemManager } from '@/utils/fileSystemManager';
 import { getAllInteractions } from '@/utils/interactionStore';
 import { exportAsJson, exportAsCsv, triggerDownload } from '@/utils/dataExporter';
 
+// Generate a short random room ID
+function generateRoomId(): string {
+  return Math.random().toString(36).substring(2, 8);
+}
+
 export default function Home() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const urlRoomId = searchParams.get('room');
+  
+  // Auto-generate room ID if not provided
+  useEffect(() => {
+    if (!urlRoomId) {
+      const newRoomId = generateRoomId();
+      router.replace(`/?room=${newRoomId}`);
+    }
+  }, [urlRoomId, router]);
+  
+  const roomId = urlRoomId || 'default';
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [isBrowserSupported, setIsBrowserSupported] = useState(true);
@@ -27,6 +47,7 @@ export default function Home() {
   // Polling-based sync for laptop
   const { isConnected, presentAbstract } = usePresentationSync({
     clientType: 'laptop',
+    roomId,
     pollingInterval: 3000,
   });
 
@@ -151,11 +172,21 @@ export default function Home() {
             </div>
 
             <div className="flex items-center gap-2">
+              {/* Open Big Screen button */}
+              <button
+                onClick={() => window.open(`/bigscreen?room=${roomId}`, '_blank')}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-3 py-1.5 rounded-full hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                Open Big Screen
+              </button>
               {/* Connection status pill */}
               {isConnected ? (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-900/30 px-3 py-1.5 rounded-full">
                   <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                  Big Screen Connected
+                  Room: {roomId}
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-3 py-1.5 rounded-full">

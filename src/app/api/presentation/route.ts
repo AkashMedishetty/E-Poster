@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// In-memory store for presentation state
-// This works on Vercel because serverless functions share memory within the same instance
-// For multi-instance deployments, consider using Vercel KV or a database
+// In-memory store for presentation state per room
+// Each room is an independent laptop+bigscreen pair
 interface PresentationState {
   abstract: PresentationData | null;
   timestamp: number;
@@ -22,31 +21,37 @@ interface PresentationData {
   localFileData?: string;
 }
 
-// Global state (persists across requests within the same serverless instance)
-let presentationState: PresentationState = {
-  abstract: null,
-  timestamp: Date.now(),
-  version: 0,
-};
+// Room-based state storage (supports multiple independent laptop+bigscreen pairs)
+const rooms = new Map<string, PresentationState>();
+
+function getRoom(roomId: string): PresentationState {
+  if (!rooms.has(roomId)) {
+    rooms.set(roomId, { abstract: null, timestamp: Date.now(), version: 0 });
+  }
+  return rooms.get(roomId)!;
+}
 
 // GET - Retrieve current presentation state
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
+  const roomId = searchParams.get('room') || 'default';
   const clientVersion = parseInt(searchParams.get('version') || '0', 10);
   
+  const room = getRoom(roomId);
+  
   // If client already has the latest version, return 304-like response
-  if (clientVersion === presentationState.version) {
+  if (clientVersion === room.version) {
     return NextResponse.json({
       changed: false,
-      version: presentationState.version,
+      version: room.version,
     });
   }
   
   return NextResponse.json({
     changed: true,
-    abstract: presentationState.abstract,
-    timestamp: presentationState.timestamp,
-    version: presentationState.version,
+    abstract: room.abstract,
+    timestamp: room.timestamp,
+    version: room.version,
   });
 }
 
@@ -54,32 +59,30 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { type, data } = body;
+    const { type, data, room: roomId = 'default' } = body;
+    
+    const room = getRoom(roomId);
     
     if (type === 'present_abstract') {
-      presentationState = {
-        abstract: data,
-        timestamp: Date.now(),
-        version: presentationState.version + 1,
-      };
+      room.abstract = data;
+      room.timestamp = Date.now();
+      room.version++;
       
       return NextResponse.json({
         success: true,
-        version: presentationState.version,
+        version: room.version,
         message: 'Presentation updated',
       });
     }
     
     if (type === 'close_presentation') {
-      presentationState = {
-        abstract: null,
-        timestamp: Date.now(),
-        version: presentationState.version + 1,
-      };
+      room.abstract = null;
+      room.timestamp = Date.now();
+      room.version++;
       
       return NextResponse.json({
         success: true,
-        version: presentationState.version,
+        version: room.version,
         message: 'Presentation closed',
       });
     }

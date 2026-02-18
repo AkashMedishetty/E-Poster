@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Abstract } from '@/types/abstract';
 import PresentationMode from './PresentationMode';
 import ManualPresentationMode from './ManualPresentationMode';
@@ -20,6 +21,9 @@ interface PosterDetailProps {
 }
 
 export default function PosterDetail({ abstract }: PosterDetailProps) {
+  const searchParams = useSearchParams();
+  const roomId = searchParams.get('room') || 'default';
+  
   const [isLoading, setIsLoading] = useState(true);
   const [isPresentationMode, setIsPresentationMode] = useState(false);
   const [isManualPresentation, setIsManualPresentation] = useState(false);
@@ -38,6 +42,7 @@ export default function PosterDetail({ abstract }: PosterDetailProps) {
   // Polling-based sync for laptop
   const { isConnected, presentAbstract } = usePresentationSync({
     clientType: 'laptop',
+    roomId,
     pollingInterval: 3000,
   });
 

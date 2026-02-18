@@ -41,10 +41,15 @@ export async function GET(request: NextRequest) {
   const roomId = searchParams.get('room') || 'default';
   const clientVersion = parseInt(searchParams.get('version') || '0', 10);
 
+  console.log(`[API GET] Room: ${roomId}, Client version: ${clientVersion}`);
+
   try {
     const room = await redis.get<PresentationState>(getRoomKey(roomId));
     
+    console.log(`[API GET] Redis response for ${roomId}:`, room ? `version ${room.version}` : 'null');
+    
     if (!room) {
+      console.log(`[API GET] No room found, returning empty state`);
       return NextResponse.json({
         changed: clientVersion === 0,
         abstract: null,
@@ -60,6 +65,7 @@ export async function GET(request: NextRequest) {
 
     // If client already has the latest version, return 304-like response
     if (clientVersion === room.version) {
+      console.log(`[API GET] No change, client is up to date`);
       return NextResponse.json({
         changed: false,
         version: room.version,
@@ -71,6 +77,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    console.log(`[API GET] Sending update: version ${room.version}, abstract: ${room.abstract?.title || 'null'}`);
     return NextResponse.json({
       changed: true,
       abstract: room.abstract,
@@ -83,7 +90,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Redis GET error:', error);
+    console.error('[API GET] Redis error:', error);
     return NextResponse.json(
       { success: false, error: 'Failed to fetch presentation state' },
       { status: 500 }
@@ -98,9 +105,13 @@ export async function POST(request: NextRequest) {
     const { type, data, room: roomId = 'default' } = body;
     const roomKey = getRoomKey(roomId);
 
+    console.log(`[API POST] Type: ${type}, Room: ${roomId}`);
+
     // Get current state or create new
     const current = await redis.get<PresentationState>(roomKey);
     const currentVersion = current?.version || 0;
+    
+    console.log(`[API POST] Current version in Redis: ${currentVersion}`);
 
     if (type === 'present_abstract') {
       const newState: PresentationState = {
@@ -111,6 +122,8 @@ export async function POST(request: NextRequest) {
       
       // Store with 1 hour expiry (auto-cleanup inactive rooms)
       await redis.set(roomKey, newState, { ex: 3600 });
+      
+      console.log(`[API POST] Saved presentation: ${data?.title}, new version: ${newState.version}`);
 
       return NextResponse.json({
         success: true,
@@ -127,6 +140,8 @@ export async function POST(request: NextRequest) {
       };
       
       await redis.set(roomKey, newState, { ex: 3600 });
+      
+      console.log(`[API POST] Closed presentation, new version: ${newState.version}`);
 
       return NextResponse.json({
         success: true,
@@ -140,7 +155,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   } catch (error) {
-    console.error('Redis POST error:', error);
+    console.error('[API POST] Error:', error);
     return NextResponse.json(
       { success: false, error: 'Invalid request body' },
       { status: 400 }

@@ -141,8 +141,8 @@ export function usePresentationSync({
         }));
       }
 
-      // Only process if there's a change
-      if (result.changed) {
+      // Only process if there's a change AND version actually increased
+      if (result.changed && result.version > versionRef.current) {
         console.log(`[${clientType}] UPDATE RECEIVED - Old version: ${versionRef.current}, New version: ${result.version}, Abstract: ${result.abstract?.title || 'null'}`);
         versionRef.current = result.version;
         onPresentationChangeRef.current?.(result.abstract);

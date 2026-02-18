@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     if (!room) {
       console.log(`[API GET] No room found, returning empty state`);
       return NextResponse.json({
-        changed: clientVersion === 0,
+        changed: false,
         abstract: null,
         timestamp: Date.now(),
         version: 0,

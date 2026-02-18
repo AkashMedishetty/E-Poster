@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { usePresentationSync, SyncPresentationData } from '@/hooks/usePresentationSync';
+import { useBroadcastSync, SyncPresentationData } from '@/hooks/useBroadcastSync';
 import FileRenderer from '@/components/FileRenderer';
 import OrientationToggle, { useOrientation } from '@/components/OrientationToggle';
 
@@ -95,12 +95,11 @@ function BigScreenContent() {
     }, 500);
   }, []);
 
-  // Polling-based sync for big screen
-  const { isConnected, error, lastSync } = usePresentationSync({
-    clientType: 'bigscreen',
+  // BroadcastChannel sync for same-device communication (instant, no server)
+  const { isConnected } = useBroadcastSync({
     roomId,
+    clientType: 'bigscreen',
     onPresentationChange: handlePresentationChange,
-    pollingInterval: 500, // Poll every 500ms for fast updates
   });
 
   // Handle ESC key to close presentation
@@ -130,7 +129,7 @@ function BigScreenContent() {
           <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-white mx-auto mb-4"></div>
           <h1 className="text-2xl font-bold mb-2">Connecting to E-Poster...</h1>
           <p className="text-gray-300">
-            {error || 'Establishing connection to server'}
+            Establishing connection...
           </p>
         </div>
       </div>
@@ -161,11 +160,9 @@ function BigScreenContent() {
           <p className="text-gray-300 text-lg">Ready to receive presentations</p>
           <p className="text-gray-400 text-sm mt-2">Click an abstract on your laptop to start</p>
           <p className="text-blue-400 text-sm mt-2">Room: {roomId}</p>
-          {lastSync && (
-            <p className="text-gray-500 text-xs mt-4">
-              Connected • Last sync: {new Date(lastSync).toLocaleTimeString()}
-            </p>
-          )}
+          <p className="text-gray-500 text-xs mt-4">
+            Connected via BroadcastChannel (same device)
+          </p>
         </div>
       </div>
     );

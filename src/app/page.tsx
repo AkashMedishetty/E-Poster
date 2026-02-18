@@ -6,7 +6,7 @@ import { abstracts as hardcodedAbstracts } from '@/data/abstracts';
 import AbstractCard from '@/components/AbstractCard';
 import SearchBar from '@/components/SearchBar';
 import ThemeToggle from '@/components/ThemeToggle';
-import { usePresentationSync } from '@/hooks/usePresentationSync';
+import { useBroadcastSync } from '@/hooks/useBroadcastSync';
 import { useLocalFiles } from '@/contexts/LocalFilesContext';
 import { Abstract } from '@/types/abstract';
 import { FileSystemManager } from '@/utils/fileSystemManager';
@@ -52,11 +52,10 @@ function HomeContent() {
   // Determine which abstract list to use
   const activeAbstracts = localFiles.isLoaded ? localFiles.abstracts : hardcodedAbstracts;
 
-  // Polling-based sync for laptop
-  const { isConnected, presentAbstract } = usePresentationSync({
-    clientType: 'laptop',
+  // BroadcastChannel sync for same-device communication (instant, no server)
+  const { isConnected, presentAbstract } = useBroadcastSync({
     roomId,
-    pollingInterval: 3000,
+    clientType: 'laptop',
   });
 
   // Debounce search query
